@@ -4,11 +4,10 @@ export default async function handler(req, res) {
     const { key, list } = req.body;
 
     try {
-        // 1. Criar a tarefa no Manus
         const createRes = await fetch('https://api.manus.ai/v2/task.create', {
             method: 'POST',
             headers: { 
-                'x-manus-api-key': key, 
+                'x-manus-api-key': key.trim(), 
                 'Content-Type': 'application/json' 
             },
             body: JSON.stringify({
@@ -17,31 +16,37 @@ export default async function handler(req, res) {
         });
 
         const createData = await createRes.json();
-        if (!createData.ok) throw new Error(createData.error.message);
+        
+        // Se o Manus retornar erro, repassamos a mensagem real para o usuário
+        if (!createData.ok) {
+            return res.status(200).json({ 
+                success: false, 
+                error: `Erro do Manus: ${createData.error?.message || 'Verifique sua API Key e créditos.'}` 
+            });
+        }
 
         const taskId = createData.data.task_id;
 
-        // 2. Esperar um pouco para a IA processar
-        await new Promise(r => setTimeout(r, 15000));
+        // Esperar o processamento
+        await new Promise(r => setTimeout(r, 12000));
 
-        // 3. Pegar o resultado
         const listRes = await fetch(`https://api.manus.ai/v2/task.listMessages?task_id=${taskId}`, {
-            headers: { 'x-manus-api-key': key }
+            headers: { 'x-manus-api-key': key.trim() }
         });
         const listData = await listRes.json();
 
         if (listData.ok) {
             const messages = listData.data.messages;
-            const assistantMsg = messages.reverse().find(m => m.role === 'assistant');
+            const assistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
             
             if (assistantMsg) {
                 return res.status(200).json({ success: true, result: assistantMsg.content });
             }
         }
 
-        res.status(200).json({ success: true, result: "A rota está sendo calculada. Por favor, tente clicar novamente em 10 segundos para ver o resultado final." });
+        res.status(200).json({ success: true, result: "O Manus ainda está calculando. Por favor, clique no botão novamente em 10 segundos para ver o resultado final." });
 
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: "Erro interno no servidor: " + error.message });
     }
 }
